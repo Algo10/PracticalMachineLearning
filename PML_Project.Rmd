@@ -1,0 +1,85 @@
+## Practical Machine Learning Peer Assessment
+
+### Summary
+The goal of the assignment is to analyze the personal activity data gathered by devices like devices such as Jawbone Up, Nike FuelBand and to analyze that data to conclude how well activity is done. This specific dataset uses data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants for weight lifting exercise. Activities are classified in 5 classes A, B, C, D and E. Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. The data for this project comes from this original source: http://groupware.les.inf.puc-rio.br/har. Project uses random forest algorithm to classify testing data in appropriate activity class.
+
+### Getting and cleaning Data
+```{r results='hide', message=FALSE, warning=FALSE}
+#Load Libraries
+library(AppliedPredictiveModeling)
+library(caret)
+library(rattle)
+library(randomForest)
+library(doParallel)
+```
+
+```{r, results='markup',echo=TRUE}
+#Get data. It is assumed that csv files are already downloaded and are in working directory
+training <- read.csv("pml-training.csv", na.strings=c("NA",""), header=TRUE)
+testing <- read.csv("pml-testing.csv", na.strings=c("NA",""), header=TRUE)
+```
+After exploring both training and testing data, using colnames, ncol and View commands, it can be concluded that both contain same columns except classe vs problem_id. 
+
+### Feature Selection
+To ensure that feature selection is correct, eliminate irrelevant columns. First 7 columns regarding timestamp, id, etc. do not look useful
+```{r, results='markup',echo=TRUE}
+training<-training[,-c(1:7)]
+testing<-testing[,-c(1:7)]
+```
+Now eliminate columns containing NA values to perform more cleanup
+```{r, results='markup',echo=TRUE}
+training<-training[ , apply(training, 2, function(x) !any(is.na(x)))]
+testing<-testing[ , apply(testing, 2, function(x) !any(is.na(x)))]
+ncol(training)
+```
+53 columns have been selected for running machine learning algorithm.
+Ensure that there are no columns with almost no variation
+```{r, results='markup',echo=TRUE}
+nzv <- nearZeroVar(training,saveMetrics = TRUE)
+nzv
+```
+### Data selection for cross-Validation
+Split the training data so that 60% data will be used for training and 40% for validation
+```{r, results='markup',echo=TRUE}
+set.seed(1313)
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+my_training <- training[inTrain,]
+my_testing <- training[-inTrain,]
+```
+
+### Machine Learning Algorithm and predictions
+Use Random Forest algorithm and evalute its accuracy.
+```{r, results='markup',echo=TRUE}
+set.seed(1313)
+modelFit <- train(my_training$classe ~ ., method="rf", 
+                    trControl=trainControl(method = "cv", number = 4, allowParallel = TRUE), 
+                    data=my_training)
+predictions <- predict(modelFit, newdata=my_testing)
+print(confusionMatrix(predictions, my_testing$classe), digits=4)
+```
+Accuracy is almost 99% so there is no need to evaluate or run any other machine learning technique.
+
+### Out of sample errors with cross-validation
+```{r, results='markup',echo=TRUE}
+mdlAccuracy <- sum(predictions == my_testing$classe)/length(predictions)
+outOfSampleError <- 1 - mdlAccuracy
+outOfSampleError
+```
+Out of sample error is 0.01070609 or 1.07%. 
+
+### Result submission
+Results were submitted with following script. All 20 tests in testing dataset got correctly classified.
+```{r, results='markup',echo=TRUE}
+submissionPredictions <- predict(modelFit, newdata=testing)
+submissionPredictions
+```
+```{r, results='markup',echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(submissionPredictions)
+```
